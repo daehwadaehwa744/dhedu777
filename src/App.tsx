@@ -49,7 +49,8 @@ export default function App() {
   const [settings, setSettings] = useState({
     maxWins: 3,
     preventZeroWins: true,
-    preventDuplicateGroups: true
+    preventDuplicateGroups: true,
+    fillUnderfilled: true
   });
   const [results, setResults] = useState<Record<string, CourseResult> | null>(null);
   const [analysis, setAnalysis] = useState<{ unselected: Member[]; duplicates: Member[] } | null>(null);
@@ -237,7 +238,58 @@ export default function App() {
         });
       }
       
-      // 3. Waiting List
+      // 3. Guaranteed Selection (preventZeroWins) - Respect capacity
+      if (settings.preventZeroWins) {
+        memberIds.forEach(mId => {
+          const member = members[mId];
+          if (member.winCount === 0 && member.applications.length > 0) {
+            const myApps = shuffle([...member.applications]);
+            for (const course of myApps) {
+              if (newResults[course].winners.length >= (capacities[course] || 15)) continue;
+              
+              const group = courseGroups[course] || course;
+              if (settings.preventDuplicateGroups && member.wonGroups.has(group)) continue;
+              
+              const app = parsedData.courses[course].find(a => a.memberId === mId);
+              if (app && !newResults[course].winners.some(w => w.memberId === mId)) {
+                newResults[course].winners.push(app);
+                member.winCount++;
+                member.wonCourses.push(course);
+                member.wonGroups.add(group);
+                break;
+              }
+            }
+          }
+        });
+      }
+
+      // 4. Fill Underfilled Courses (Ignore maxWins)
+      // Give additional chances to fill up courses that are still under capacity
+      if (settings.fillUnderfilled) {
+        for (let round = 1; round <= maxApplications; round++) {
+          memberIds.forEach(mId => {
+            const member = members[mId];
+            const myApps = shuffle([...member.applications]);
+            for (const course of myApps) {
+              if (newResults[course].winners.length >= (capacities[course] || 15)) continue;
+              
+              const group = courseGroups[course] || course;
+              if (settings.preventDuplicateGroups && member.wonGroups.has(group)) continue;
+              
+              const app = parsedData.courses[course].find(a => a.memberId === mId);
+              if (app && !newResults[course].winners.some(w => w.memberId === mId)) {
+                newResults[course].winners.push(app);
+                member.winCount++;
+                member.wonCourses.push(course);
+                member.wonGroups.add(group);
+                break; // One additional course per round per member
+              }
+            }
+          });
+        }
+      }
+      
+      // 5. Waiting List
       Object.keys(parsedData.courses).forEach(course => {
         const winnersSet = new Set(newResults[course].winners.map(w => w.memberId));
         const allApplicants = parsedData.courses[course];
@@ -262,27 +314,7 @@ export default function App() {
         newResults[course].waiting = [...shuffle(waiting), ...shuffle(movedToBack)];
       });
       
-      // 4. Guaranteed Selection (Force assign 0-win members)
-      if (settings.preventZeroWins) {
-        Object.values(members).forEach(member => {
-          if (member.winCount === 0 && member.applications.length > 0) {
-              // Pick the first application for now
-              const course = member.applications[0];
-              const app = parsedData.courses[course].find(a => a.memberId === member.memberId);
-              if (app) {
-                  newResults[course].winners.push(app);
-                  member.winCount++;
-                  member.wonCourses.push(course);
-                  member.wonGroups.add(courseGroups[course] || course);
-                  
-                  // Remove from waiting list if present
-                  newResults[course].waiting = newResults[course].waiting.filter(w => w.memberId !== member.memberId);
-              }
-          }
-        });
-      }
-      
-      // 5. Analysis
+      // 6. Analysis
       const unselected: Member[] = [];
       const duplicates: Member[] = [];
       Object.values(members).forEach(m => {
@@ -529,6 +561,26 @@ export default function App() {
                           type="checkbox" 
                           checked={settings.preventDuplicateGroups} 
                           onChange={(e) => setSettings(s => ({ ...s, preventDuplicateGroups: e.target.checked }))}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                      </label>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1">
+                        <label className="text-sm text-slate-600 font-medium">정원 미달 강좌 추가 선정</label>
+                        <div className="relative group flex items-center">
+                          <HelpCircle className="w-3 h-3 text-slate-400 cursor-help" />
+                          <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 p-2 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                            인당 최대 선정 수에 도달했더라도, 정원이 미달된 강좌에 신청했다면 추가로 선정합니다.
+                          </span>
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={settings.fillUnderfilled} 
+                          onChange={(e) => setSettings(s => ({ ...s, fillUnderfilled: e.target.checked }))}
                           className="sr-only peer"
                         />
                         <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
