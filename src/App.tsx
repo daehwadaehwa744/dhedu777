@@ -387,7 +387,7 @@ export default function App() {
         <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
           <div>
             <h1 className="text-3xl font-extrabold text-slate-900 leading-tight flex items-center gap-2">
-              🎓 강좌 추첨 시스템 <span className="text-blue-600 text-lg ml-2">v3.3</span>
+              🎓 강좌 추첨 시스템 <span className="text-blue-600 text-lg ml-2">v3.4</span>
             </h1>
             <p className="text-slate-500 font-medium italic mt-1">고양시대화노인종합복지관 통합 추첨 관리 도구</p>
           </div>
