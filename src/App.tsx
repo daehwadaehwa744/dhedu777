@@ -293,6 +293,66 @@ export default function App() {
         });
       }
 
+      // 3.5. Forced Re-allocation (Robin Hood Logic)
+      // 정원 초과로 0건 배정된 수강생을 위해, 다기수 당첨자(2건 이상)의 자리를 회수하여 배정합니다.
+      if (settings.preventZeroWins) {
+        const zeroWinIdList = Object.keys(members).filter(mId => members[mId].winCount === 0 && members[mId].applications.length > 0);
+        const shuffledZeroWins = shuffle(zeroWinIdList);
+
+        for (const mId of shuffledZeroWins) {
+          const zeroMember = members[mId];
+          if (zeroMember.winCount > 0) continue; 
+          
+          let bestVictimInfo: { vId: string, course: string, winCount: number } | null = null;
+          
+          const myApps = shuffle([...zeroMember.applications]);
+          for (const course of myApps) {
+            const currentWinners = newResults[course].winners;
+            
+            for (const winnerApp of currentWinners) {
+              const winnerMember = members[winnerApp.memberId];
+              // 2개 이상 선정된 수강생 타겟팅
+              if (winnerMember.winCount > 1) {
+                // 가장 많이 당첨된 사람을 우선 희생자로 선정
+                if (!bestVictimInfo || winnerMember.winCount > bestVictimInfo.winCount) {
+                  bestVictimInfo = {
+                    vId: winnerMember.memberId,
+                    course: course,
+                    winCount: winnerMember.winCount
+                  };
+                }
+              }
+            }
+          }
+          
+          // 희생자를 찾았다면 Swap 수행
+          if (bestVictimInfo) {
+            const course = bestVictimInfo.course;
+            const victimMem = members[bestVictimInfo.vId];
+            const zeroMemApp = parsedData.courses[course].find(a => a.memberId === mId);
+            
+            if (zeroMemApp) {
+              // 희생자 목록에서 강좌 제외
+              newResults[course].winners = newResults[course].winners.filter(w => w.memberId !== bestVictimInfo.vId);
+              victimMem.winCount--;
+              victimMem.wonCourses = victimMem.wonCourses.filter(c => c !== course);
+              
+              // 희생자 그룹셋 최신화
+              victimMem.wonGroups.clear();
+              victimMem.wonCourses.forEach(c => {
+                victimMem.wonGroups.add(courseGroups[c] || c);
+              });
+              
+              // 0건 수강생에게 강좌 배정
+              newResults[course].winners.push(zeroMemApp);
+              zeroMember.winCount++;
+              zeroMember.wonCourses.push(course);
+              zeroMember.wonGroups.add(courseGroups[course] || course);
+            }
+          }
+        }
+      }
+
       // 4. Fill Underfilled Courses (Ignore maxWins)
       // 정원 미달 강좌의 경우 추가적으로 채우기
       if (settings.fillUnderfilled) {
