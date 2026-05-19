@@ -204,14 +204,71 @@ export default function App() {
         });
       });
       
-      // 2. Smart Sequential Drawing
+      // 2. Base Allocation (Guaranteed 1st Win Fairly)
+      // "가장 선택지가 적은(여유가 없는) 사람"부터 배정하여 0건 당첨을 최소화하는 최적 배정 알고리즘
       let memberIds = Object.keys(members);
       memberIds = shuffle(memberIds);
       
       const maxApplications = Math.max(...Object.values(members).map(m => m.applications.length));
       const maxRounds = settings.maxWins === 0 ? maxApplications : settings.maxWins;
       
+      if (settings.preventZeroWins) {
+        let changed = true;
+        while (changed) {
+          changed = false;
+          
+          const candidates: { mId: string; availableCourses: string[] }[] = [];
+          
+          memberIds.forEach(mId => {
+            const member = members[mId];
+            if (member.winCount === 0) {
+              const available = member.applications.filter(course => {
+                const group = courseGroups[course] || course;
+                const hasCapacity = newResults[course].winners.length < (capacities[course] || 15);
+                const noGroupConflict = !settings.preventDuplicateGroups || !member.wonGroups.has(group);
+                // Also check if they are already in winners (shouldn't happen but safe)
+                const notAlreadyWinner = !newResults[course].winners.some(w => w.memberId === mId);
+                return hasCapacity && noGroupConflict && notAlreadyWinner;
+              });
+              
+              if (available.length > 0) {
+                candidates.push({ mId, availableCourses: available });
+              }
+            }
+          });
+          
+          if (candidates.length > 0) {
+            // Find the minimum number of available courses
+            const minAvailable = Math.min(...candidates.map(c => c.availableCourses.length));
+            
+            // Get all members who are most constrained
+            const mostConstrained = candidates.filter(c => c.availableCourses.length === minAvailable);
+            
+            // Pick one randomly
+            const chosen = mostConstrained[Math.floor(Math.random() * mostConstrained.length)];
+            const member = members[chosen.mId];
+            
+            // Pick a random available course
+            const course = chosen.availableCourses[Math.floor(Math.random() * chosen.availableCourses.length)];
+            
+            const group = courseGroups[course] || course;
+            const app = parsedData.courses[course].find(a => a.memberId === chosen.mId);
+            
+            if (app) {
+              newResults[course].winners.push(app);
+              member.winCount++;
+              member.wonCourses.push(course);
+              member.wonGroups.add(group);
+              changed = true;
+            }
+          }
+        }
+      }
+
+      // 3. Smart Sequential Drawing
+      // 남은 잔여 슬롯을 최대 한도(maxWins)까지 순차적으로 배분
       for (let round = 1; round <= maxRounds; round++) {
+        memberIds = shuffle(memberIds);
         memberIds.forEach(mId => {
           const member = members[mId];
           if (member.winCount >= maxWinsLimit) return;
@@ -224,49 +281,23 @@ export default function App() {
             const group = courseGroups[course] || course;
             if (settings.preventDuplicateGroups && member.wonGroups.has(group)) continue;
             
-            if ((round === 1 && member.winCount === 0) || round > 1) {
-              const app = parsedData.courses[course].find(a => a.memberId === mId);
-              if (app && !newResults[course].winners.some(w => w.memberId === mId)) {
-                newResults[course].winners.push(app);
-                member.winCount++;
-                member.wonCourses.push(course);
-                member.wonGroups.add(group);
-                break;
-              }
-            }
-          }
-        });
-      }
-      
-      // 3. Guaranteed Selection (preventZeroWins) - Respect capacity
-      if (settings.preventZeroWins) {
-        memberIds.forEach(mId => {
-          const member = members[mId];
-          if (member.winCount === 0 && member.applications.length > 0) {
-            const myApps = shuffle([...member.applications]);
-            for (const course of myApps) {
-              if (newResults[course].winners.length >= (capacities[course] || 15)) continue;
-              
-              const group = courseGroups[course] || course;
-              if (settings.preventDuplicateGroups && member.wonGroups.has(group)) continue;
-              
-              const app = parsedData.courses[course].find(a => a.memberId === mId);
-              if (app && !newResults[course].winners.some(w => w.memberId === mId)) {
-                newResults[course].winners.push(app);
-                member.winCount++;
-                member.wonCourses.push(course);
-                member.wonGroups.add(group);
-                break;
-              }
+            const app = parsedData.courses[course].find(a => a.memberId === mId);
+            if (app && !newResults[course].winners.some(w => w.memberId === mId)) {
+              newResults[course].winners.push(app);
+              member.winCount++;
+              member.wonCourses.push(course);
+              member.wonGroups.add(group);
+              break;
             }
           }
         });
       }
 
       // 4. Fill Underfilled Courses (Ignore maxWins)
-      // Give additional chances to fill up courses that are still under capacity
+      // 정원 미달 강좌의 경우 추가적으로 채우기
       if (settings.fillUnderfilled) {
         for (let round = 1; round <= maxApplications; round++) {
+          memberIds = shuffle(memberIds); // 순서를 다시 섞어 공정성 유지
           memberIds.forEach(mId => {
             const member = members[mId];
             const myApps = shuffle([...member.applications]);
@@ -282,7 +313,7 @@ export default function App() {
                 member.winCount++;
                 member.wonCourses.push(course);
                 member.wonGroups.add(group);
-                break; // One additional course per round per member
+                break; // 한 라운드당 한 명에게 하나씩만 추가
               }
             }
           });
