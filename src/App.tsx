@@ -430,16 +430,16 @@ export default function App() {
     XLSX.utils.book_append_sheet(wb, tocWs, "목차");
     
     // 2. 통합 결과 시트
-    const memberSummary: Record<string, { name: string, phone: string, won: string[], waiting: string[] }> = {};
+    const memberSummary: Record<string, { memberId: string, name: string, phone: string, won: string[], waiting: string[] }> = {};
     
     for (const course in results) {
       const res = results[course];
       res.winners.forEach(w => {
-        if (!memberSummary[w.memberId]) memberSummary[w.memberId] = { name: w.name, phone: w.phone, won: [], waiting: [] };
+        if (!memberSummary[w.memberId]) memberSummary[w.memberId] = { memberId: w.memberId, name: w.name, phone: w.phone, won: [], waiting: [] };
         memberSummary[w.memberId].won.push(course);
       });
       res.waiting.forEach(w => {
-        if (!memberSummary[w.memberId]) memberSummary[w.memberId] = { name: w.name, phone: w.phone, won: [], waiting: [] };
+        if (!memberSummary[w.memberId]) memberSummary[w.memberId] = { memberId: w.memberId, name: w.name, phone: w.phone, won: [], waiting: [] };
         memberSummary[w.memberId].waiting.push(course);
       });
     }
@@ -452,14 +452,14 @@ export default function App() {
       if (m.waiting.length > maxWait) maxWait = m.waiting.length;
     });
 
-    const headerRow = ["이름", "전화번호"];
+    const headerRow = ["이름", "회원번호", "전화번호"];
     for (let i = 1; i <= maxWon; i++) headerRow.push(`선정 ${i}`);
     for (let i = 1; i <= maxWait; i++) headerRow.push(`대기 ${i}`);
 
     const allData = [headerRow];
     
     summaryList.sort((a, b) => a.name.localeCompare(b.name)).forEach(m => {
-      const row = [m.name, m.phone];
+      const row = [m.name, m.memberId, m.phone];
       for (let i = 0; i < maxWon; i++) {
         row.push(m.won[i] || "");
       }
