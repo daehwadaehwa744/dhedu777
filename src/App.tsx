@@ -560,7 +560,7 @@ export default function App() {
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 border-t-4 border-t-blue-500">
               <h2 className="text-lg font-bold mb-4 flex items-center">
                 <span className="bg-blue-100 text-blue-600 w-7 h-7 rounded-full flex items-center justify-center mr-2 text-sm">1</span>
-                엑셀 데이터 업로드
+                엑셀 데이터 업로드<span className="text-gray-600 text-xs ml-2">(오른쪽 상단에서 양식 다운로드)</span>
               </h2>
               <div 
                 className="p-4 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50 text-center relative hover:bg-slate-100 transition-colors cursor-pointer"
