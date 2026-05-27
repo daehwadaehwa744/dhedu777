@@ -430,12 +430,45 @@ export default function App() {
     XLSX.utils.book_append_sheet(wb, tocWs, "목차");
     
     // 2. 통합 결과 시트
-    const allData = [["강좌명", "상태", "순위", "이름", "회원번호", "전화번호", "비고"]];
+    const memberSummary: Record<string, { name: string, phone: string, won: string[], waiting: string[] }> = {};
+    
     for (const course in results) {
       const res = results[course];
-      res.winners.forEach((w, i) => allData.push([course, "선정", String(i + 1), w.name, w.memberId, w.phone, w.isPriority ? "우선" : ""]));
-      res.waiting.forEach((w, i) => allData.push([course, "대기", String(i + 1), w.name, w.memberId, w.phone, ""]));
+      res.winners.forEach(w => {
+        if (!memberSummary[w.memberId]) memberSummary[w.memberId] = { name: w.name, phone: w.phone, won: [], waiting: [] };
+        memberSummary[w.memberId].won.push(course);
+      });
+      res.waiting.forEach(w => {
+        if (!memberSummary[w.memberId]) memberSummary[w.memberId] = { name: w.name, phone: w.phone, won: [], waiting: [] };
+        memberSummary[w.memberId].waiting.push(course);
+      });
     }
+
+    let maxWon = 0;
+    let maxWait = 0;
+    const summaryList = Object.values(memberSummary);
+    summaryList.forEach(m => {
+      if (m.won.length > maxWon) maxWon = m.won.length;
+      if (m.waiting.length > maxWait) maxWait = m.waiting.length;
+    });
+
+    const headerRow = ["이름", "전화번호"];
+    for (let i = 1; i <= maxWon; i++) headerRow.push(`선정 ${i}`);
+    for (let i = 1; i <= maxWait; i++) headerRow.push(`대기 ${i}`);
+
+    const allData = [headerRow];
+    
+    summaryList.sort((a, b) => a.name.localeCompare(b.name)).forEach(m => {
+      const row = [m.name, m.phone];
+      for (let i = 0; i < maxWon; i++) {
+        row.push(m.won[i] || "");
+      }
+      for (let i = 0; i < maxWait; i++) {
+        row.push(m.waiting[i] || "");
+      }
+      allData.push(row);
+    });
+
     const allWs = XLSX.utils.aoa_to_sheet(allData);
     XLSX.utils.book_append_sheet(wb, allWs, "통합추첨결과");
     sheetNames.push("통합추첨결과");
@@ -510,9 +543,9 @@ export default function App() {
         <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
           <div>
             <h1 className="text-3xl font-extrabold text-slate-900 leading-tight flex items-center gap-2">
-              🎓 강좌 추첨 시스템 <span className="text-blue-600 text-lg ml-2">v3.5</span>
+              🎓 강좌 추첨 시스템 <span className="text-blue-600 text-lg ml-2">v4.0</span>
             </h1>
-            <p className="text-slate-500 font-medium italic mt-1">고양시대화노인종합복지관 통합 추첨 관리 도구</p>
+            <p className="text-slate-500 font-medium italic mt-1">노년사회화교육 강좌 추첨 관리 도구</p>
           </div>
           <div className="flex flex-wrap gap-2 justify-center">
             <button onClick={downloadTemplate} className="bg-white px-3 py-2 rounded shadow-sm border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 flex items-center gap-1 text-sm">
