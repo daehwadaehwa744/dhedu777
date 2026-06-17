@@ -8,6 +8,33 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+function formatExcelTime(value: string | number) {
+  if (!value) return '';
+  const strVal = String(value).trim();
+  
+  // Handle decimal fraction (e.g., "0.5" for 12:00, "0.5625" for 13:30)
+  if (/^0?\.\d+$/.test(strVal) || strVal === '1' || strVal === '0') {
+    const fraction = parseFloat(strVal);
+    const totalMinutes = Math.round(fraction * 24 * 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+  }
+  
+  // Extract and normalize HH:mm format if it exists (handles "1:30 PM", "14:30:00", etc.)
+  const timeRegex = /(\d{1,2}):(\d{2})/;
+  const match = strVal.match(timeRegex);
+  if (match) {
+    let hours = parseInt(match[1], 10);
+    const mins = parseInt(match[2], 10);
+    if (strVal.toLowerCase().includes('pm') && hours < 12) hours += 12;
+    if (strVal.toLowerCase().includes('am') && hours === 12) hours = 0;
+    return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+  }
+  
+  return strVal;
+}
+
 function parseTimeStr(timeStr: string) {
   if (!timeStr) return null;
   try { return JSON.parse(timeStr); } catch { return null; }
@@ -125,14 +152,14 @@ export default function App() {
         const initialTimes: Record<string, string> = {};
         const wsCoursesName = wb.SheetNames.find(name => name.includes('강좌목록') || name.includes('정원'));
         if (wsCoursesName) {
-          const coursesData = XLSX.utils.sheet_to_json(wb.Sheets[wsCoursesName]);
+          const coursesData = XLSX.utils.sheet_to_json(wb.Sheets[wsCoursesName], { raw: false, defval: '' });
           coursesData.forEach((row: any) => {
             const courseName = String(row['강좌명'] || row['과목명'] || row[0] || '').trim();
-            const cap = parseInt(row['정원'] || row[1], 10);
+            const cap = parseInt(String(row['정원'] || row[1]), 10);
             const group = String(row['그룹'] || '').trim();
             const dayInfo = String(row['요일'] || '').trim();
-            const startTime = String(row['시작 시간'] || row['시작시간'] || '').trim();
-            const endTime = String(row['종료 시간'] || row['종료시간'] || '').trim();
+            const startTime = formatExcelTime(row['시작 시간'] || row['시작시간'] || '');
+            const endTime = formatExcelTime(row['종료 시간'] || row['종료시간'] || '');
             
             if (courseName && !isNaN(cap)) {
               initialCapacities[courseName] = cap;
