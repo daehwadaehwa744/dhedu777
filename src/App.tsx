@@ -234,6 +234,7 @@ export default function App() {
         setCourseTimes(initialTimes);
         setResults(null);
         setAnalysis(null);
+        window.scrollTo(0, 0);
       } catch (err: any) {
         alert(err.message || '엑셀 파일 파싱 중 오류가 발생했습니다.');
       }
@@ -564,6 +565,7 @@ export default function App() {
       setResults(newResults);
       setAnalysis({ unselected, duplicates });
       setIsProcessing(false);
+      window.scrollTo(0, 0);
     }, 1200);
   };
 
