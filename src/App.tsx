@@ -509,8 +509,6 @@ export default function App() {
               
               const group = courseGroups[course] || course;
               const time = courseTimes[course] || '';
-              if (settings.preventDuplicateGroups && member.wonGroups.has(group)) continue;
-              if (settings.preventDuplicateTimes && time !== '' && checkTimeConflict(time, member.wonTimes)) continue;
               
               const app = parsedData.courses[course].find(a => a.memberId === mId);
               if (app && !newResults[course].winners.some(w => w.memberId === mId)) {
@@ -523,6 +521,96 @@ export default function App() {
               }
             }
           });
+        }
+      }
+
+      // 4.5. Resolve conflicts created by fillUnderfilled
+      if (settings.fillUnderfilled) {
+        let changed = true;
+        let iter = 0;
+        while (changed && iter < 10) {
+          changed = false;
+          iter++;
+          
+          for (const mId of Object.keys(members)) {
+            const member = members[mId];
+            if (member.wonCourses.length < 2) continue;
+            
+            for (let i = 0; i < member.wonCourses.length; i++) {
+              for (let j = i + 1; j < member.wonCourses.length; j++) {
+                const c1 = member.wonCourses[i];
+                const c2 = member.wonCourses[j];
+                
+                const g1 = courseGroups[c1] || c1;
+                const g2 = courseGroups[c2] || c2;
+                const t1 = courseTimes[c1] || '';
+                const t2 = courseTimes[c2] || '';
+                
+                const isGroupConflict = settings.preventDuplicateGroups && g1 === g2;
+                const isTimeConflict = settings.preventDuplicateTimes && t1 !== '' && t2 !== '' && checkTimeConflict(t1, new Set([t2]));
+                
+                if (isGroupConflict || isTimeConflict) {
+                   const c1Full = newResults[c1].winners.length >= (capacities[c1] || 15);
+                   const c2Full = newResults[c2].winners.length >= (capacities[c2] || 15);
+                   
+                   const c1EligibleWaitlistCount = parsedData.courses[c1].filter(app => {
+                     return !newResults[c1].winners.some(w => w.memberId === app.memberId);
+                   }).length;
+                   
+                   const c2EligibleWaitlistCount = parsedData.courses[c2].filter(app => {
+                     return !newResults[c2].winners.some(w => w.memberId === app.memberId);
+                   }).length;
+                   
+                   const c1HasWaitl = c1Full && c1EligibleWaitlistCount > 0;
+                   const c2HasWaitl = c2Full && c2EligibleWaitlistCount > 0;
+                   
+                   let courseToDrop: string | null = null;
+                   if (c1HasWaitl && !c2HasWaitl) courseToDrop = c1;
+                   else if (!c1HasWaitl && c2HasWaitl) courseToDrop = c2;
+                   
+                   if (courseToDrop) {
+                     // Drop from courseToDrop
+                     newResults[courseToDrop].winners = newResults[courseToDrop].winners.filter(w => w.memberId !== mId);
+                     member.wonCourses = member.wonCourses.filter(c => c !== courseToDrop);
+                     member.winCount--;
+                     member.wonGroups.clear();
+                     member.wonTimes.clear();
+                     member.wonCourses.forEach(c => {
+                        member.wonGroups.add(courseGroups[c] || c);
+                        const ct = courseTimes[c];
+                        if (ct) member.wonTimes.add(ct);
+                     });
+                     
+                     // Try to fill courseToDrop with someone from the waitlist
+                     const waitlistPool = shuffle([...parsedData.courses[courseToDrop]]);
+                     for (const wApp of waitlistPool) {
+                       if (newResults[courseToDrop].winners.some(w => w.memberId === wApp.memberId)) continue;
+                       const cand = members[wApp.memberId];
+                       if (!cand) continue;
+                       
+                       if (cand.winCount >= maxWinsLimit) continue;
+                       const cG = courseGroups[courseToDrop] || courseToDrop;
+                       const cT = courseTimes[courseToDrop] || '';
+                       
+                       if (settings.preventDuplicateGroups && cand.wonGroups.has(cG)) continue;
+                       if (settings.preventDuplicateTimes && cT !== '' && checkTimeConflict(cT, cand.wonTimes)) continue;
+                       
+                       // Found replacement
+                       newResults[courseToDrop].winners.push(wApp);
+                       cand.wonCourses.push(courseToDrop);
+                       cand.winCount++;
+                       cand.wonGroups.add(cG);
+                       if (cT) cand.wonTimes.add(cT);
+                       break;
+                     }
+                     changed = true;
+                     break; // break inner loop
+                   }
+                }
+              }
+              if (changed) break; // break outer loop
+            }
+          }
         }
       }
       
@@ -808,8 +896,8 @@ export default function App() {
                 <label className="text-sm text-slate-600 font-medium whitespace-nowrap">정원 미달 강좌 추가 선정</label>
                 <div className="relative group flex items-center">
                   <HelpCircle className="w-3 h-3 text-slate-400 cursor-help" />
-                  <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-64 p-2 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 hidden md:block">
-                    정원이 미달된 강좌에 한해, 이미 당첨된 회원이라도 중복 당첨될 수 있도록 추가 배정합니다.
+                  <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-72 p-2 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 hidden md:block">
+                    정원이 미달된 강좌에 한해, 최대 당첨 수, 동일 그룹, 동일 시간대 제한과 관계없이 추가 배정됩니다.
                   </span>
                 </div>
               </div>
@@ -937,7 +1025,7 @@ export default function App() {
         <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
           <div>
             <h1 className="text-3xl font-extrabold text-slate-900 leading-tight flex items-center gap-2">
-              🎓 강좌 추첨 시스템 <span className="text-blue-600 text-lg ml-2">v4.2</span>
+              🎓 강좌 추첨 시스템 <span className="text-blue-600 text-lg ml-2">v5.0</span>
             </h1>
             <p className="text-slate-500 font-medium italic mt-1">노년사회화교육 강좌 추첨 관리 도구</p>
           </div>
