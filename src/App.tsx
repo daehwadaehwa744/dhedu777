@@ -332,13 +332,23 @@ export default function App() {
                 const hasCapacity = newResults[course].winners.length < (capacities[course] || 15);
                 const noGroupConflict = !settings.preventDuplicateGroups || !member.wonGroups.has(group);
                 const noTimeConflict = !settings.preventDuplicateTimes || time === '' || !checkTimeConflict(time, member.wonTimes);
-                // Also check if they are already in winners (shouldn't happen but safe)
                 const notAlreadyWinner = !newResults[course].winners.some(w => w.memberId === mId);
                 return hasCapacity && noGroupConflict && noTimeConflict && notAlreadyWinner;
               });
               
               if (available.length > 0) {
-                candidates.push({ mId, availableCourses: available });
+                // 폐강 주의(신청 60% 미만) 강좌를 제외한 우선순위 강좌 필터링
+                const preferred = available.filter(course => {
+                  const cap = capacities[course] || 15;
+                  const applicantCount = parsedData.courses[course].length;
+                  return applicantCount >= cap * 0.6;
+                });
+                
+                if (preferred.length > 0) {
+                  candidates.push({ mId, availableCourses: preferred });
+                } else {
+                  candidates.push({ mId, availableCourses: available });
+                }
               }
             }
           });
